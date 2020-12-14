@@ -24,7 +24,28 @@ class HinarioApp extends StatelessWidget {
   }
 }
 
-class IndiceWidget extends StatelessWidget {
+class IndiceWidget extends StatefulWidget {
+
+  @override
+  _IndiceState createState() => _IndiceState();
+
+  void _navegaParaHinoTela(BuildContext context, hinoEscolhido) {
+    Navigator.push(context,
+        MaterialPageRoute(
+          builder: (context) => HinoWidget(hino: hinoEscolhido)
+        ));
+  }
+}
+
+class _IndiceState extends State<IndiceWidget> {
+
+  Future<Map<String,Hino>> _indiceHinos;
+
+  @override
+  void initState() {
+    super.initState();
+    _indiceHinos = _carregaIndiceHinos();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,35 +56,59 @@ class IndiceWidget extends StatelessWidget {
   }
 
   Widget _getIndices() {
-    return ListView.builder(
-      itemCount: 400,
-      itemBuilder: (context, index) {
-        int numero = index + 1;
-        return Card(
-          child: ListTile(
-            title: Text('$numero'),
-            trailing: Icon(Icons.keyboard_arrow_right),
-            onTap: (){
-              _navegaParaHinoTela(context, numero);
-            },
-          ),
-        );
-      },
+    return FutureBuilder(
+      future: _indiceHinos,
+      builder: (context, AsyncSnapshot<Map<String,Hino>> snapshot) {
+        if (snapshot.hasData) {
+          Map<String,Hino> map = Map.from(snapshot.data);
+          List<String> indices = map.keys.toList();
+
+          return ListView.builder(
+            itemCount: map.length,
+            itemBuilder: (context, index) {
+              String indice = map[indices[index]].titulo;
+              return Card(
+                child: ListTile(
+                  title: Text('$indice'),
+                  trailing: Icon(Icons.keyboard_arrow_right),
+                  onTap: (){
+                    widget._navegaParaHinoTela(context, map[indices[index]]);
+                  },
+                ),
+              );
+              }
+          );
+        } else if (snapshot.hasError) {
+          return Text("${snapshot.error}");
+        }
+
+        return CircularProgressIndicator();
+      }
     );
   }
 
-  void _navegaParaHinoTela(BuildContext context, numeroSelecao) {
-    Navigator.push(context,
-        MaterialPageRoute(
-          builder: (context) => HinoWidget(numero: numeroSelecao)
-        ));
+  Future<Map<String,Hino>> _carregaIndiceHinos() async {
+    final resposta =
+    await http.get("https://hinario.herokuapp.com/hinos");
+
+    Map<String,Hino> map = Map();
+    if (resposta.statusCode == 200) {
+      (jsonDecode(resposta.body) as List).forEach((element) {
+        Hino hino = Hino.fromJson(element);
+        map.putIfAbsent(hino.titulo, () => hino);
+      });
+    } else {
+      throw Exception('Erro ao carregar Mapa Índice Hinos');
+    }
+    return map;
   }
+
 }
 
 class HinoWidget extends StatefulWidget {
-  final int numero;
+  final Hino hino;
 
-  HinoWidget({Key key, @required this.numero}) : super(key:key);
+  HinoWidget({Key key, @required this.hino}) : super(key:key);
 
   @override
   _HinoState createState() => _HinoState();
@@ -74,40 +119,19 @@ class _HinoState extends State<HinoWidget> {
   @override
   Widget build(BuildContext context) {
     return  Scaffold(
-      appBar: AppBar(title: Text("Hino ${widget.numero}")),
+      appBar: AppBar(title: Text("${widget.hino.titulo}")),
       body: _getBodyListView(context),
     );
   }
 
   Widget _getBodyListView(BuildContext context) {
-    return FutureBuilder(
-      future: _getHino(widget.numero),
-      builder: (context, snapshot){
-        if (snapshot.hasData) {
-          return ListView.builder(
-            itemCount: snapshot.data.paragrafos.length,
-            itemBuilder: (context, index) {
-              return ListTile(
-                title: Text(snapshot.data.paragrafos[index].conteudo),
-              );
-            },
-          );
-        }else if (snapshot.hasError) {
-          return Text("${snapshot.error}");
-        }
-        return CircularProgressIndicator();
+    return ListView.builder(
+      itemCount: widget.hino.paragrafos.length,
+      itemBuilder: (context, index) {
+        return ListTile(
+          title: Text(widget.hino.paragrafos[index].conteudo),
+        );
       },
     );
-  }
-
-  Future<Hino> _getHino(int numero) async {
-    final response =
-    await http.get("https://hinario.herokuapp.com/hinos/${numero}");
-
-    if (response.statusCode == 200) {
-      return Hino.fromJson(jsonDecode(response.body)[0]);
-    } else {
-      throw Exception('Erro ao carregar hino');
-    }
   }
 }
